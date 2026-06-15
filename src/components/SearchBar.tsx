@@ -52,43 +52,43 @@ const SearchBar: React.FC = () => {
       const likeQuery = `%${query}%`;
 
       const events = await dbAll<any>(
-        'SELECT id, title, description, date FROM timeline_events WHERE title LIKE ? OR description LIKE ? ORDER BY date DESC LIMIT 10',
+        'SELECT id, title, description, event_date as date FROM timeline_events WHERE title LIKE ? OR description LIKE ? ORDER BY event_date DESC LIMIT 10',
         [likeQuery, likeQuery]
       );
       events.forEach((e) => results.push({ type: 'timeline', id: e.id, title: e.title, snippet: e.description, date: e.date }));
 
       const letters = await dbAll<any>(
-        'SELECT id, title, content, date FROM letters WHERE title LIKE ? OR content LIKE ? ORDER BY date DESC LIMIT 10',
+        'SELECT id, title, content, created_at as date FROM letters WHERE title LIKE ? OR content LIKE ? ORDER BY created_at DESC LIMIT 10',
         [likeQuery, likeQuery]
       );
       letters.forEach((l) => results.push({ type: 'letters', id: l.id, title: l.title, snippet: l.content?.slice(0, 100), date: l.date }));
 
       const photos = await dbAll<any>(
-        'SELECT id, title, description, tags, date FROM photos WHERE title LIKE ? OR description LIKE ? OR tags LIKE ? ORDER BY date DESC LIMIT 10',
-        [likeQuery, likeQuery, likeQuery]
+        'SELECT id, title, description, COALESCE(taken_at, created_at) as date FROM photos WHERE title LIKE ? OR description LIKE ? ORDER BY COALESCE(taken_at, created_at) DESC LIMIT 10',
+        [likeQuery, likeQuery]
       );
       photos.forEach((p) => results.push({ type: 'gallery', id: p.id, title: p.title || '照片', snippet: p.description, date: p.date }));
 
       const travels = await dbAll<any>(
-        'SELECT id, title, description, location, startDate FROM travels WHERE title LIKE ? OR description LIKE ? OR location LIKE ? ORDER BY startDate DESC LIMIT 10',
+        'SELECT id, title, description, location, start_date as date FROM travels WHERE title LIKE ? OR description LIKE ? OR location LIKE ? ORDER BY start_date DESC LIMIT 10',
         [likeQuery, likeQuery, likeQuery]
       );
-      travels.forEach((t) => results.push({ type: 'travels', id: t.id, title: t.title, snippet: `${t.location} - ${t.description}`, date: t.startDate }));
+      travels.forEach((t) => results.push({ type: 'travels', id: t.id, title: t.title, snippet: `${t.location || ''} - ${t.description || ''}`, date: t.date }));
 
       const goals = await dbAll<any>(
-        'SELECT id, title, description, deadline FROM goals WHERE title LIKE ? OR description LIKE ? ORDER BY deadline DESC LIMIT 5',
+        'SELECT id, title, description, target_date as date FROM goals WHERE title LIKE ? OR description LIKE ? ORDER BY target_date DESC LIMIT 5',
         [likeQuery, likeQuery]
       );
-      goals.forEach((g) => results.push({ type: 'checklist', id: g.id, title: `目标: ${g.title}`, snippet: g.description, date: g.deadline }));
+      goals.forEach((g) => results.push({ type: 'checklist', id: g.id, title: `目标: ${g.title}`, snippet: g.description, date: g.date }));
 
       const tasks = await dbAll<any>(
-        'SELECT id, title, description, deadline FROM tasks WHERE title LIKE ? OR description LIKE ? ORDER BY deadline DESC LIMIT 5',
+        'SELECT id, title, description, due_date as date FROM tasks WHERE title LIKE ? OR description LIKE ? ORDER BY due_date DESC LIMIT 5',
         [likeQuery, likeQuery]
       );
-      tasks.forEach((t) => results.push({ type: 'checklist', id: t.id, title: `任务: ${t.title}`, snippet: t.description, date: t.deadline }));
+      tasks.forEach((t) => results.push({ type: 'checklist', id: t.id, title: `任务: ${t.title}`, snippet: t.description, date: t.date }));
 
       const keepsakes = await dbAll<any>(
-        'SELECT id, title, description, date FROM keepsakes WHERE title LIKE ? OR description LIKE ? ORDER BY date DESC LIMIT 5',
+        'SELECT id, title, description, COALESCE(date, created_at) as date FROM keepsakes WHERE title LIKE ? OR description LIKE ? ORDER BY COALESCE(date, created_at) DESC LIMIT 5',
         [likeQuery, likeQuery]
       );
       keepsakes.forEach((k) => results.push({ type: 'checklist', id: k.id, title: `纪念物: ${k.title}`, snippet: k.description, date: k.date }));

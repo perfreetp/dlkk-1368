@@ -8,6 +8,8 @@ import {
   showMessage,
   backupCreate,
   backupRestore,
+  backupDelete,
+  backupPreview,
 } from '@/utils/api';
 import { formatDate, formatFileSize } from '@/utils';
 import './Backup.css';
@@ -108,38 +110,80 @@ const BackupPage: React.FC = () => {
   const handlePreviewBackup = async (backup: BackupDB) => {
     setPreviewBackup(backup);
 
-    try {
-      const counts = {
-        时间轴事件: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM timeline_events'))[0]?.count || 0,
-        信件: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM letters'))[0]?.count || 0,
-        照片: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM photos'))[0]?.count || 0,
-        旅行: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM travels'))[0]?.count || 0,
-        票据: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM receipts'))[0]?.count || 0,
-        目标: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM goals'))[0]?.count || 0,
-        任务: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM tasks'))[0]?.count || 0,
-        纪念物: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM keepsakes'))[0]?.count || 0,
-        温度记录: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM temperature_records'))[0]?.count || 0,
-        保险箱文件: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM safe_files'))[0]?.count || 0,
-      };
+    const TABLE_NAME_MAP: Record<string, string> = {
+      timeline_events: '时间轴事件',
+      letters: '信件',
+      photos: '照片',
+      travels: '旅行',
+      receipts: '票据',
+      goals: '目标',
+      tasks: '任务',
+      keepsakes: '纪念物',
+      temperature_records: '温度记录',
+      safe_files: '保险箱文件',
+      backups: '备份记录',
+      settings: '系统设置',
+    };
 
-      setPreviewData({
-        tables: counts,
-        photoCount: counts['照片'],
-        safeFileCount: counts['保险箱文件'],
-        totalSize: backup.file_size,
-        createdAt: backup.created_at,
-        backupVersion: '1.0.0',
-      });
+    try {
+      const preview = await backupPreview(backup.file_path);
+      if (preview && preview.manifest) {
+        const manifest = preview.manifest;
+        const tables: Record<string, number> = {};
+        if (manifest.tableStats) {
+          for (const [enName, count] of Object.entries(manifest.tableStats)) {
+            const zhName = TABLE_NAME_MAP[enName] || enName;
+            tables[zhName] = count;
+          }
+        }
+
+        setPreviewData({
+          tables,
+          photoCount: manifest.photoCount || 0,
+          safeFileCount: manifest.safeFileCount || 0,
+          totalSize: backup.file_size,
+          createdAt: backup.created_at,
+          missingFiles: manifest.missingFiles,
+          backupVersion: manifest.version || '1.0.0',
+        });
+      } else {
+        throw new Error('无法获取备份 manifest');
+      }
     } catch (err) {
-      console.error('Preview error:', err);
-      setPreviewData({
-        tables: {},
-        photoCount: 0,
-        safeFileCount: 0,
-        totalSize: backup.file_size,
-        createdAt: backup.created_at,
-        backupVersion: '1.0.0',
-      });
+      console.error('Preview error, fallback to current db:', err);
+      try {
+        const counts = {
+          时间轴事件: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM timeline_events'))[0]?.count || 0,
+          信件: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM letters'))[0]?.count || 0,
+          照片: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM photos'))[0]?.count || 0,
+          旅行: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM travels'))[0]?.count || 0,
+          票据: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM receipts'))[0]?.count || 0,
+          目标: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM goals'))[0]?.count || 0,
+          任务: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM tasks'))[0]?.count || 0,
+          纪念物: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM keepsakes'))[0]?.count || 0,
+          温度记录: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM temperature_records'))[0]?.count || 0,
+          保险箱文件: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM safe_files'))[0]?.count || 0,
+        };
+
+        setPreviewData({
+          tables: counts,
+          photoCount: counts['照片'],
+          safeFileCount: counts['保险箱文件'],
+          totalSize: backup.file_size,
+          createdAt: backup.created_at,
+          backupVersion: '1.0.0',
+        });
+      } catch (fallbackErr) {
+        console.error('Fallback preview error:', fallbackErr);
+        setPreviewData({
+          tables: {},
+          photoCount: 0,
+          safeFileCount: 0,
+          totalSize: backup.file_size,
+          createdAt: backup.created_at,
+          backupVersion: '1.0.0',
+        });
+      }
     }
 
     setShowPreview(true);
@@ -185,11 +229,9 @@ const BackupPage: React.FC = () => {
     try {
       await dbDelete('backups', backup.id);
       try {
-        if ((window as any).electronAPI?.backup?.delete) {
-          await (window as any).electronAPI.backup.delete(backup.file_path);
-        }
+        await backupDelete(backup.file_path);
       } catch (e) {
-        // ignore file delete error
+        console.warn('Delete backup file warning:', e);
       }
       await showMessage('info', '已删除', '备份记录已删除');
       await loadBackups();

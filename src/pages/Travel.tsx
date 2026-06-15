@@ -274,23 +274,44 @@ export default function Travel() {
         route: travelForm.route,
       });
 
-      const sql =
-        'INSERT INTO travels (title, description, location, start_date, end_date, photo_ids, cost) VALUES (?, ?, ?, ?, ?, ?, ?)';
-      await dbRun(sql, [
-        travelForm.title.trim(),
-        serializedDesc,
-        travelForm.location || (travelForm.route[0]?.location || ''),
-        travelForm.startDate,
-        travelForm.endDate || travelForm.startDate,
-        '',
-        travelForm.cost || 0,
-      ]);
+      if (travelForm.id > 0) {
+        const sql =
+          'UPDATE travels SET title=?, description=?, location=?, start_date=?, end_date=?, photo_ids=?, cost=?, updated_at=datetime("now","localtime") WHERE id=?';
+        await dbRun(sql, [
+          travelForm.title.trim(),
+          serializedDesc,
+          travelForm.location || (travelForm.route[0]?.location || ''),
+          travelForm.startDate,
+          travelForm.endDate || travelForm.startDate,
+          '',
+          travelForm.cost || 0,
+          travelForm.id,
+        ]);
 
-      await showMessage({
-        type: 'info',
-        title: '成功',
-        message: '旅行记录已保存',
-      });
+        await showMessage({
+          type: 'info',
+          title: '成功',
+          message: '旅行记录已更新',
+        });
+      } else {
+        const sql =
+          'INSERT INTO travels (title, description, location, start_date, end_date, photo_ids, cost) VALUES (?, ?, ?, ?, ?, ?, ?)';
+        await dbRun(sql, [
+          travelForm.title.trim(),
+          serializedDesc,
+          travelForm.location || (travelForm.route[0]?.location || ''),
+          travelForm.startDate,
+          travelForm.endDate || travelForm.startDate,
+          '',
+          travelForm.cost || 0,
+        ]);
+
+        await showMessage({
+          type: 'info',
+          title: '成功',
+          message: '旅行记录已保存',
+        });
+      }
       setShowModal(false);
       await loadTravels();
     } catch (error) {
@@ -307,6 +328,26 @@ export default function Travel() {
     setViewingTravel(travel);
     setActiveTravelId(travel.id);
     await loadReceipts(travel.id);
+  };
+
+  const handleEditTravel = (travel: TravelExt) => {
+    setViewingTravel(null);
+    setTravelForm({
+      id: travel.id,
+      title: travel.title,
+      description: travel.description,
+      location: travel.location,
+      startDate: travel.startDate,
+      endDate: travel.endDate,
+      cost: travel.cost,
+      highlights: [...travel.highlights],
+      route: [...travel.route],
+      highlightInput: '',
+      routeLocation: '',
+      routeDate: dayjs().format('YYYY-MM-DD'),
+      routeDescription: '',
+    });
+    setShowModal(true);
   };
 
   const handleDeleteTravel = async (travel: TravelExt, e: React.MouseEvent) => {
@@ -523,7 +564,7 @@ export default function Travel() {
             className="modal-content card travel-form-modal"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="fw-600 text-xl mb-lg">记录新旅行</h2>
+            <h2 className="fw-600 text-xl mb-lg">{travelForm.id ? '编辑旅行' : '记录新旅行'}</h2>
             <div className="flex-col gap-md">
               <div className="flex-col gap-sm">
                 <label className="fw-500">旅行标题</label>
@@ -676,7 +717,7 @@ export default function Travel() {
                 取消
               </button>
               <button className="btn btn-primary" onClick={handleSaveTravel}>
-                保存旅行
+                {travelForm.id ? '保存修改' : '保存旅行'}
               </button>
             </div>
           </div>
@@ -699,12 +740,20 @@ export default function Travel() {
                   {viewingTravel.cost > 0 && ` · 总花费 ¥${viewingTravel.cost.toFixed(2)}`}
                 </p>
               </div>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => setViewingTravel(null)}
-              >
-                关闭
-              </button>
+              <div className="flex gap-sm">
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handleEditTravel(viewingTravel)}
+                >
+                  ✏️ 编辑
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setViewingTravel(null)}
+                >
+                  关闭
+                </button>
+              </div>
             </div>
 
             {viewingTravel.description && (

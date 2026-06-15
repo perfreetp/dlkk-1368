@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import dayjs from 'dayjs';
-import { dbAll, dbRun, showMessage, selectFile, deleteFile } from '@/utils/api';
+import { dbAll, dbRun, showMessage, selectFile, deleteFile, selectPhotoFiles, importPhoto } from '@/utils/api';
 import { formatDate, formatFileSize, debounce } from '@/utils';
 import { useAppStore } from '@/store';
 import './Gallery.css';
@@ -161,39 +161,61 @@ export default function Gallery() {
 
   const handleImportPhotos = async () => {
     try {
-      if (window.electronAPI?.selectFile) {
-        const filePath = await selectFile([
-          { name: '图片文件', extensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'] },
-        ]);
-        if (filePath) {
-          const hash = `imported_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          const fileName = filePath.split(/[\\/]/).pop() || 'photo';
-          const sql =
-            'INSERT INTO photos (title, description, file_path, file_name, file_hash, file_size, is_encrypted, taken_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
-          await dbRun(sql, [
-            fileName,
-            '',
-            filePath,
-            fileName,
-            hash,
-            0,
-            0,
-            dayjs().format('YYYY-MM-DD HH:mm:ss'),
-          ]);
-          await showMessage({
-            type: 'info',
-            title: '导入成功',
-            message: '照片已成功导入',
-          });
-          await loadPhotos();
-        }
-      } else {
-        await showMessage({
-          type: 'info',
-          title: '提示',
-          message: '请在 Electron 环境中使用文件夹导入功能',
-        });
+      const paths = await selectPhotoFiles();
+      if (paths.length === 0) {
+        return;
       }
+
+      const existingHashes = photos.map((p) => p.fileHash).filter(Boolean);
+
+      let successCount = 0;
+      let duplicateCount = 0;
+      let failCount = 0;
+
+      for (const filePath of paths) {
+        try {
+          const result = await importPhoto(filePath, existingHashes);
+
+          if (result.isDuplicate) {
+            duplicateCount++;
+          } else if (result.success && result.file_path && result.file_name && result.file_hash) {
+            const sql =
+              'INSERT INTO photos (title, description, file_path, file_name, file_hash, file_size, is_encrypted, taken_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+            await dbRun(sql, [
+              result.file_name,
+              '',
+              result.file_path,
+              result.file_name,
+              result.file_hash,
+              result.file_size || 0,
+              0,
+              dayjs().format('YYYY-MM-DD HH:mm:ss'),
+            ]);
+            successCount++;
+            if (result.file_hash) {
+              existingHashes.push(result.file_hash);
+            }
+          } else {
+            failCount++;
+          }
+        } catch (e) {
+          console.error('导入单张照片失败:', filePath, e);
+          failCount++;
+        }
+      }
+
+      await loadPhotos();
+
+      const parts: string[] = [];
+      if (successCount > 0) parts.push(`导入成功 ${successCount} 张`);
+      if (duplicateCount > 0) parts.push(`重复跳过 ${duplicateCount} 张`);
+      if (failCount > 0) parts.push(`失败 ${failCount} 张`);
+
+      await showMessage({
+        type: successCount > 0 ? 'info' : failCount > 0 ? 'error' : 'warning',
+        title: '导入完成',
+        message: parts.length > 0 ? parts.join(' / ') : '没有导入任何照片',
+      });
     } catch (error) {
       console.error('导入照片失败:', error);
       await showMessage({

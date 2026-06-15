@@ -38,6 +38,8 @@ interface LetterForm {
   recipient: string;
   unlockDate?: string;
   chatSnippets: string[];
+  _isFavorite?: boolean;
+  _isRead?: boolean;
 }
 
 const defaultForm: LetterForm = {
@@ -47,6 +49,8 @@ const defaultForm: LetterForm = {
   recipient: 'TA',
   unlockDate: '',
   chatSnippets: [],
+  _isFavorite: false,
+  _isRead: false,
 };
 
 function parseLetterExt(db: LetterDB): LetterExt {
@@ -142,6 +146,22 @@ export default function Letters() {
     setSnippetInput('');
   };
 
+  const handleEditLetter = (letter: LetterExt) => {
+    setViewingLetter(null);
+    setForm({
+      id: letter.id,
+      title: letter.title,
+      content: letter.content,
+      sender: letter.sender,
+      recipient: letter.recipient,
+      unlockDate: letter.unlockDate || '',
+      chatSnippets: [],
+      _isFavorite: letter.isFavorite,
+      _isRead: letter.isRead,
+    });
+    setShowModal(true);
+  };
+
   const handleAddSnippet = () => {
     const text = snippetInput.trim();
     if (text) {
@@ -195,27 +215,47 @@ export default function Letters() {
 
     try {
       const moodData = serializeLetterExt({
-        isFavorite: false,
-        isRead: false,
+        isFavorite: form._isFavorite || false,
+        isRead: form._isRead || false,
         unlockDate: form.unlockDate || '',
       });
 
-      const sql =
-        'INSERT INTO letters (title, content, sender, recipient, is_encrypted, mood) VALUES (?, ?, ?, ?, ?, ?)';
-      await dbRun(sql, [
-        form.title.trim(),
-        form.content.trim(),
-        form.sender,
-        form.recipient,
-        form.unlockDate ? 1 : 0,
-        moodData,
-      ]);
+      if (form.id) {
+        const sql =
+          'UPDATE letters SET title=?, content=?, sender=?, recipient=?, is_encrypted=?, mood=?, updated_at=datetime("now","localtime") WHERE id=?';
+        await dbRun(sql, [
+          form.title.trim(),
+          form.content.trim(),
+          form.sender,
+          form.recipient,
+          form.unlockDate ? 1 : 0,
+          moodData,
+          form.id,
+        ]);
 
-      await showMessage({
-        type: 'info',
-        title: '成功',
-        message: form.unlockDate ? '信件已封存，到期后可查看' : '信件已保存',
-      });
+        await showMessage({
+          type: 'info',
+          title: '成功',
+          message: form.unlockDate ? '信件已封存，到期后可查看' : '信件已更新',
+        });
+      } else {
+        const sql =
+          'INSERT INTO letters (title, content, sender, recipient, is_encrypted, mood) VALUES (?, ?, ?, ?, ?, ?)';
+        await dbRun(sql, [
+          form.title.trim(),
+          form.content.trim(),
+          form.sender,
+          form.recipient,
+          form.unlockDate ? 1 : 0,
+          moodData,
+        ]);
+
+        await showMessage({
+          type: 'info',
+          title: '成功',
+          message: form.unlockDate ? '信件已封存，到期后可查看' : '信件已保存',
+        });
+      }
 
       handleCloseModal();
       await loadLetters();
@@ -418,7 +458,7 @@ export default function Letters() {
       {showModal && (
         <div className="modal-overlay" onClick={handleCloseModal}>
           <div className="modal-content card letter-write-modal" onClick={(e) => e.stopPropagation()}>
-            <h2 className="fw-600 text-xl mb-lg">写一封信</h2>
+            <h2 className="fw-600 text-xl mb-lg">{form.id ? '编辑信件' : '写一封信'}</h2>
             <div className="flex-col gap-md">
               <div className="flex gap-md">
                 <div className="flex-col gap-sm flex-1">
@@ -477,7 +517,7 @@ export default function Letters() {
                 取消
               </button>
               <button className="btn btn-primary" onClick={handleSubmit}>
-                封存信件
+                {form.id ? '保存修改' : '封存信件'}
               </button>
             </div>
           </div>
@@ -580,12 +620,20 @@ export default function Letters() {
                   {formatDateTime(viewingLetter.createdAt)}
                 </p>
               </div>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => setViewingLetter(null)}
-              >
-                关闭
-              </button>
+              <div className="flex gap-sm">
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handleEditLetter(viewingLetter)}
+                >
+                  ✏️ 编辑
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setViewingLetter(null)}
+                >
+                  关闭
+                </button>
+              </div>
             </div>
             <div className="letter-content">
               {viewingLetter.content.split('\n').map((line, i) => (

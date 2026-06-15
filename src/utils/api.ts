@@ -1112,3 +1112,53 @@ export async function backupDelete(backupPath: string): Promise<boolean> {
 
   return true;
 }
+
+interface BackupManifest {
+  backupTime: string;
+  version: string;
+  includePhotos: boolean;
+  includeSafeFiles: boolean;
+  dbFileName: string;
+  tableStats: Record<string, number>;
+  missingFiles?: string[];
+  photoCount?: number;
+  safeFileCount?: number;
+}
+
+interface BackupPreview {
+  manifest: BackupManifest;
+  photoManifest?: any;
+  safeFileManifest?: any;
+}
+
+export async function backupPreview(backupPath: string): Promise<BackupPreview> {
+  const api = window.electronAPI;
+
+  if (api?.backup?.preview) {
+    const resp = await api.backup.preview(backupPath);
+    if (resp.success && resp.data) return resp.data;
+    if (resp.error) throw new Error(resp.error);
+  }
+
+  const raw = localStorage.getItem(backupPath);
+  if (raw) {
+    try {
+      const backup = JSON.parse(raw);
+      return {
+        manifest: {
+          backupTime: backup.createdAt || new Date().toISOString(),
+          version: '1.0.0',
+          includePhotos: false,
+          includeSafeFiles: false,
+          dbFileName: '',
+          tableStats: backup.tables || {},
+          missingFiles: [],
+          photoCount: 0,
+          safeFileCount: 0,
+        },
+      };
+    } catch {}
+  }
+
+  throw new Error('预览备份失败');
+}
