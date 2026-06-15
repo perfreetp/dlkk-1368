@@ -52,11 +52,23 @@ const SearchBar: React.FC = () => {
       const likeQuery = `%${query}%`;
 
       const events = await dbAll<any>(
-        'SELECT id, title, description, category, event_date as date FROM timeline_events WHERE title LIKE ? OR description LIKE ? OR category LIKE ? ORDER BY event_date DESC LIMIT 10',
-        [likeQuery, likeQuery, likeQuery]
+        'SELECT id, title, description, category, photo_ids, event_date as date FROM timeline_events WHERE title LIKE ? OR description LIKE ? OR category LIKE ? OR photo_ids LIKE ? ORDER BY event_date DESC LIMIT 10',
+        [likeQuery, likeQuery, likeQuery, likeQuery]
       );
       events.forEach((e) => {
-        const snippet = e.description || e.category || '';
+        const tags = e.photo_ids ? e.photo_ids.split(',').filter(Boolean) : [];
+        const tagStr = tags.length > 0 ? tags.map((t: string) => `#${t}`).join(' ') : '';
+        let snippet = '';
+        if (e.description) {
+          snippet = e.description.slice(0, 80);
+        } else if (e.category) {
+          snippet = e.category;
+        } else {
+          snippet = '暂无详情';
+        }
+        if (tagStr) {
+          snippet = `${snippet} | ${tagStr}`;
+        }
         results.push({ type: 'timeline', id: e.id, title: e.title, snippet, date: e.date });
       });
 

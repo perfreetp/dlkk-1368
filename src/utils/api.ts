@@ -40,13 +40,39 @@ interface BackupOptions {
   includePhotos?: boolean;
   includeSafeFiles?: boolean;
   backupName?: string;
+  description?: string;
+}
+
+interface BackupManifest {
+  backupTime: string;
+  version: string;
+  includePhotos: boolean;
+  includeSafeFiles: boolean;
+  dbFileName: string;
+  tableStats: Record<string, number>;
+  missingFiles?: string[];
+  photoCount?: number;
+  safeFileCount?: number;
 }
 
 interface BackupResult {
   success: boolean;
-  backupPath?: string;
+  filePath?: string;
   fileSize?: number;
+  manifest?: BackupManifest;
+  photoCount?: number;
+  safeFileCount?: number;
+  backupId?: number;
   error?: string;
+}
+
+interface DeleteBackupResult {
+  dbRecordDeleted: boolean;
+  dbRecordCount: number;
+  fileDeleted: boolean;
+  fileStillExists: boolean;
+  filePath: string;
+  errors: string[];
 }
 
 interface BackupInfo {
@@ -957,10 +983,15 @@ export async function backupCreate(
   }
 
   if (api?.backup?.createBackup) {
-    const result = await api.backup.createBackup(options || {});
+    const result = (await api.backup.createBackup(options || {})) as any;
     return {
       success: result.success,
-      backupPath: result.filePath,
+      filePath: result.filePath,
+      fileSize: result.fileSize,
+      manifest: result.manifest,
+      photoCount: result.photoCount,
+      safeFileCount: result.safeFileCount,
+      backupId: result.backupId,
       error: result.error,
     };
   }
@@ -993,8 +1024,24 @@ export async function backupCreate(
 
   return {
     success: true,
-    backupPath: backupKey,
+    filePath: backupKey,
     fileSize: JSON.stringify(mockBackup).length,
+    manifest: {
+      backupTime: new Date().toISOString(),
+      version: '1.0.0',
+      includePhotos: !!options?.includePhotos,
+      includeSafeFiles: !!options?.includeSafeFiles,
+      dbFileName: 'couple_space.db',
+      tableStats: Object.fromEntries(
+        Object.entries(mockBackup.tables).map(([k, v]) => [k, (v as any[]).length])
+      ),
+      missingFiles: [],
+      photoCount: 0,
+      safeFileCount: 0,
+    },
+    photoCount: 0,
+    safeFileCount: 0,
+    backupId: Date.now(),
   };
 }
 
@@ -1090,39 +1137,45 @@ export async function backupList(): Promise<BackupInfo[]> {
   }
 }
 
-export async function backupDelete(backupPath: string): Promise<boolean> {
+export async function backupDelete(backupPath: string): Promise<DeleteBackupResult> {
   const api = window.electronAPI;
 
   if (api?.backup?.delete) {
     const resp = await api.backup.delete(backupPath);
-    if (resp.success) return resp.data || false;
+    if (resp.success && resp.data) return resp.data as unknown as DeleteBackupResult;
+    if (resp.error) {
+      return {
+        dbRecordDeleted: false,
+        dbRecordCount: -1,
+        fileDeleted: false,
+        fileStillExists: true,
+        filePath: backupPath,
+        errors: [resp.error],
+      };
+    }
   }
 
   localStorage.removeItem(backupPath);
 
+  let dbRecordDeleted = true;
   const metaRaw = localStorage.getItem('backups_meta');
   if (metaRaw) {
     try {
       const meta = JSON.parse(metaRaw).filter((m: any) => m.key !== backupPath && m.path !== backupPath);
       localStorage.setItem('backups_meta', JSON.stringify(meta));
     } catch {
-      // ignore
+      dbRecordDeleted = false;
     }
   }
 
-  return true;
-}
-
-interface BackupManifest {
-  backupTime: string;
-  version: string;
-  includePhotos: boolean;
-  includeSafeFiles: boolean;
-  dbFileName: string;
-  tableStats: Record<string, number>;
-  missingFiles?: string[];
-  photoCount?: number;
-  safeFileCount?: number;
+  return {
+    dbRecordDeleted,
+    dbRecordCount: dbRecordDeleted ? 0 : 1,
+    fileDeleted: true,
+    fileStillExists: false,
+    filePath: backupPath,
+    errors: [],
+  };
 }
 
 interface BackupPreview {

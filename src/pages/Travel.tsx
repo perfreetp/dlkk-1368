@@ -52,6 +52,37 @@ interface TravelExt {
   createdAt: string;
 }
 
+interface TravelForm {
+  id: number;
+  title: string;
+  description: string;
+  location: string;
+  startDate: string;
+  endDate: string;
+  cost: number;
+  highlightInput: string;
+  highlights: string[];
+  route: RoutePoint[];
+  routeLocation: string;
+  routeDate: string;
+  routeDescription: string;
+}
+
+interface ReceiptForm {
+  title: string;
+  category: string;
+  amount: number;
+  date: string;
+  description: string;
+  imagePath: string;
+}
+
+interface ReceiptCategory {
+  value: string;
+  label: string;
+  icon: string;
+}
+
 function parseTravelExt(db: TravelDB): TravelExt {
   let highlights: string[] = [];
   let route: RoutePoint[] = [];
@@ -91,7 +122,7 @@ function serializeTravelExt(data: {
   return JSON.stringify(data);
 }
 
-const receiptCategories = [
+const receiptCategories: ReceiptCategory[] = [
   { value: 'invoice', label: '发票', icon: '📄' },
   { value: 'ticket', label: '车票', icon: '🎫' },
   { value: 'admission', label: '门票', icon: '🎟️' },
@@ -102,7 +133,7 @@ const receiptCategories = [
   { value: 'other', label: '其他', icon: '📦' },
 ];
 
-function getCategoryInfo(category: string) {
+function getCategoryInfo(category: string): ReceiptCategory {
   return receiptCategories.find((c) => c.value === category) || receiptCategories[7];
 }
 
@@ -116,7 +147,7 @@ export default function Travel() {
   const [activeTravelId, setActiveTravelId] = useState<number | null>(null);
   const { highlightRecord, clearHighlightRecord } = useAppStore();
 
-  const [travelForm, setTravelForm] = useState({
+  const [travelForm, setTravelForm] = useState<TravelForm>({
     id: 0,
     title: '',
     description: '',
@@ -125,14 +156,14 @@ export default function Travel() {
     endDate: dayjs().format('YYYY-MM-DD'),
     cost: 0,
     highlightInput: '',
-    highlights: [] as string[],
-    route: [] as RoutePoint[],
+    highlights: [],
+    route: [],
     routeLocation: '',
     routeDate: dayjs().format('YYYY-MM-DD'),
     routeDescription: '',
   });
 
-  const [receiptForm, setReceiptForm] = useState({
+  const [receiptForm, setReceiptForm] = useState<ReceiptForm>({
     title: '',
     category: 'other',
     amount: 0,
@@ -215,6 +246,11 @@ export default function Travel() {
       routeDescription: '',
     });
     setShowModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setTravelForm((prev) => ({ ...prev, id: 0 }));
   };
 
   const handleAddHighlight = () => {
@@ -324,7 +360,7 @@ export default function Travel() {
         });
       }
 
-      setShowModal(false);
+      handleCloseModal();
       const updatedTravels = await loadTravels();
 
       if (isEdit) {
@@ -335,8 +371,6 @@ export default function Travel() {
           await loadReceipts(updatedTravel.id);
         }
       }
-
-      setTravelForm((prev) => ({ ...prev, id: 0 }));
     } catch (error) {
       console.error('保存旅行失败:', error);
       await showMessage({
@@ -359,15 +393,15 @@ export default function Travel() {
       id: travel.id,
       title: travel.title,
       description: travel.description,
-      location: travel.location,
-      startDate: travel.startDate,
-      endDate: travel.endDate,
-      cost: travel.cost,
+      location: travel.location || '',
+      startDate: travel.startDate || dayjs().format('YYYY-MM-DD'),
+      endDate: travel.endDate || travel.startDate || dayjs().format('YYYY-MM-DD'),
+      cost: Number(travel.cost) || 0,
       highlights: [...travel.highlights],
       route: [...travel.route],
       highlightInput: '',
       routeLocation: '',
-      routeDate: dayjs().format('YYYY-MM-DD'),
+      routeDate: travel.startDate || dayjs().format('YYYY-MM-DD'),
       routeDescription: '',
     });
     setShowModal(true);
@@ -594,7 +628,7 @@ export default function Travel() {
       )}
 
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={handleCloseModal}>
           <div
             className="modal-content card travel-form-modal"
             onClick={(e) => e.stopPropagation()}
@@ -608,6 +642,15 @@ export default function Travel() {
                   placeholder="例如：周末的杭州之旅"
                   value={travelForm.title}
                   onChange={(e) => setTravelForm({ ...travelForm, title: e.target.value })}
+                />
+              </div>
+              <div className="flex-col gap-sm">
+                <label className="fw-500">📍 地点</label>
+                <input
+                  type="text"
+                  placeholder="例如：杭州"
+                  value={travelForm.location}
+                  onChange={(e) => setTravelForm({ ...travelForm, location: e.target.value })}
                 />
               </div>
               <div className="flex gap-md">
@@ -748,7 +791,7 @@ export default function Travel() {
             </div>
             <div className="divider" />
             <div className="flex gap-md justify-end">
-              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>
+              <button className="btn btn-secondary" onClick={handleCloseModal}>
                 取消
               </button>
               <button className="btn btn-primary" onClick={handleSaveTravel}>

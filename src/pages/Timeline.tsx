@@ -3,6 +3,7 @@ import dayjs from 'dayjs';
 import { dbAll, dbRun, showMessage } from '@/utils/api';
 import { formatDate, generateId } from '@/utils';
 import { useAppStore } from '@/store';
+import Modal from '@/components/Modal';
 import './Timeline.css';
 
 interface TimelineEventDB {
@@ -52,6 +53,7 @@ export default function Timeline() {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<TimelineEventDB | null>(null);
+  const [viewingEvent, setViewingEvent] = useState<TimelineEventDB | null>(null);
   const [form, setForm] = useState<TimelineEventForm>(defaultForm);
   const [tagInput, setTagInput] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -83,6 +85,7 @@ export default function Timeline() {
     if (highlightRecord.type === 'timeline' && highlightRecord.id !== null) {
       const timer = setTimeout(() => {
         const element = document.getElementById('timeline-event-' + highlightRecord.id);
+        const foundEvent = events.find((e) => String(e.id) === String(highlightRecord.id));
         if (element) {
           element.scrollIntoView({ behavior: 'smooth', block: 'center' });
           element.classList.add('record-highlight-pulse');
@@ -91,10 +94,15 @@ export default function Timeline() {
           }, 3000);
           clearHighlightRecord();
         }
+        if (foundEvent) {
+          setTimeout(() => {
+            setViewingEvent(foundEvent);
+          }, 300);
+        }
       }, 200);
       return () => clearTimeout(timer);
     }
-  }, [highlightRecord.timestamp]);
+  }, [highlightRecord.timestamp, events]);
 
   const handleOpenModal = (event?: TimelineEventDB) => {
     if (event) {
@@ -119,6 +127,21 @@ export default function Timeline() {
     setEditingEvent(null);
     setForm(defaultForm);
     setTagInput('');
+  };
+
+  const handleViewEvent = (event: TimelineEventDB) => {
+    setViewingEvent(event);
+  };
+
+  const handleCloseViewModal = () => {
+    setViewingEvent(null);
+  };
+
+  const handleViewToEdit = () => {
+    if (viewingEvent) {
+      handleOpenModal(viewingEvent);
+      handleCloseViewModal();
+    }
   };
 
   const handleAddTag = () => {
@@ -303,13 +326,22 @@ export default function Timeline() {
                       }`}
                     >
                       <div className="flex justify-between items-start mb-sm">
-                        <div>
+                        <div
+                          className="cursor-pointer flex-1"
+                          onClick={() => handleViewEvent(event)}
+                        >
                           <h3 className="fw-600 text-lg">{event.title}</h3>
                           <div className="text-secondary text-sm mt-xs">
                             {formatDate(event.event_date)}
                           </div>
                         </div>
                         <div className="flex gap-sm">
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleViewEvent(event)}
+                          >
+                            👁️ 查看
+                          </button>
                           <button
                             className="btn btn-secondary btn-sm"
                             onClick={() => handleOpenModal(event)}
@@ -357,6 +389,68 @@ export default function Timeline() {
           ))}
         </div>
       )}
+
+      <Modal
+        isOpen={!!viewingEvent}
+        onClose={handleCloseViewModal}
+        title={viewingEvent?.title}
+        width={600}
+        footer={
+          <div className="flex gap-md justify-end">
+            <button className="btn btn-secondary" onClick={handleCloseViewModal}>
+              关闭
+            </button>
+            <button className="btn btn-primary" onClick={handleViewToEdit}>
+              ✏️ 编辑
+            </button>
+          </div>
+        }
+      >
+        {viewingEvent && (
+          <div className="view-event-container">
+            <div className="view-event-meta flex gap-sm flex-wrap mb-lg">
+              <div className="text-secondary text-sm">
+                📅 {formatDate(viewingEvent.event_date)}
+              </div>
+              <span
+                className="badge"
+                style={{
+                  backgroundColor: categoryColors[viewingEvent.category]
+                    ? `${categoryColors[viewingEvent.category]}40`
+                    : 'var(--color-primary-light)',
+                  color: categoryColors[viewingEvent.category] || 'var(--color-primary-dark)',
+                }}
+              >
+                {categoryLabels[viewingEvent.category] || viewingEvent.category}
+              </span>
+            </div>
+
+            {viewingEvent.photo_ids &&
+              viewingEvent.photo_ids.split(',').filter(Boolean).length > 0 && (
+                <div className="view-event-tags mb-lg">
+                  {viewingEvent.photo_ids
+                    .split(',')
+                    .filter(Boolean)
+                    .map((tag) => (
+                      <span key={tag} className="view-event-tag">
+                        #{tag}
+                      </span>
+                    ))}
+                </div>
+              )}
+
+            <div className="view-event-description">
+              {viewingEvent.description ? (
+                <p className="whitespace-pre-wrap text-secondary leading-relaxed">
+                  {viewingEvent.description}
+                </p>
+              ) : (
+                <p className="text-secondary italic">暂无详情描述</p>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {showModal && (
         <div className="modal-overlay" onClick={handleCloseModal}>

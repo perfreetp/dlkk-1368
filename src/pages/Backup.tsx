@@ -4,7 +4,6 @@ import EmptyState from '@/components/EmptyState';
 import Modal from '@/components/Modal';
 import {
   dbAll,
-  dbDelete,
   showMessage,
   backupCreate,
   backupRestore,
@@ -26,12 +25,14 @@ interface BackupDB {
 
 interface BackupPreviewData {
   tables: Record<string, number>;
-  photoCount: number;
-  safeFileCount: number;
+  photoCount: number | '未备份';
+  safeFileCount: number | '未备份';
   totalSize: number;
   createdAt: string;
   missingFiles?: string[];
   backupVersion: string;
+  includePhotos: boolean;
+  includeSafeFiles: boolean;
 }
 
 const BackupPage: React.FC = () => {
@@ -78,20 +79,26 @@ const BackupPage: React.FC = () => {
         description: backupNote || undefined,
       });
 
-      if (result && (result as any).manifest) {
-        const manifest = (result as any).manifest;
-        const missing = manifest.missingFiles || [];
+      if (!result || !result.success) {
+        await showMessage('error', '备份失败', (result as any)?.error || '备份创建未成功');
+        return;
+      }
+
+      const fileSize = result.fileSize || 0;
+      if (fileSize === 0) {
+        await showMessage('warning', '备份警告', '备份操作已完成，但生成的备份包是空的，请检查磁盘空间或重试');
+      } else {
+        const manifest = result.manifest;
+        const missing = manifest?.missingFiles || [];
         if (missing.length > 0) {
           await showMessage(
             'warning',
             '备份完成（有缺失文件）',
-            `成功创建备份，但有 ${missing.length} 个文件未找到，已记录在备份元数据中`
+            `成功创建备份，包大小 ${formatFileSize(fileSize)}，但有 ${missing.length} 个文件未找到，已记录在备份元数据中`
           );
         } else {
-          await showMessage('success', '备份成功', `备份包已生成，共 ${formatFileSize(result.fileSize || 0)}`);
+          await showMessage('success', '备份成功', `备份包已生成，共 ${formatFileSize(fileSize)}`);
         }
-      } else {
-        await showMessage('success', '备份成功', '备份记录已保存');
       }
 
       setShowCreateModal(false);
@@ -127,66 +134,45 @@ const BackupPage: React.FC = () => {
 
     try {
       const preview = await backupPreview(backup.file_path);
-      if (preview && preview.manifest) {
-        const manifest = preview.manifest;
-        const tables: Record<string, number> = {};
-        if (manifest.tableStats) {
-          for (const [enName, count] of Object.entries(manifest.tableStats)) {
-            const zhName = TABLE_NAME_MAP[enName] || enName;
-            tables[zhName] = count;
-          }
-        }
-
-        setPreviewData({
-          tables,
-          photoCount: manifest.photoCount || 0,
-          safeFileCount: manifest.safeFileCount || 0,
-          totalSize: backup.file_size,
-          createdAt: backup.created_at,
-          missingFiles: manifest.missingFiles,
-          backupVersion: manifest.version || '1.0.0',
-        });
-      } else {
+      if (!preview || !preview.manifest) {
         throw new Error('无法获取备份 manifest');
       }
-    } catch (err) {
-      console.error('Preview error, fallback to current db:', err);
-      try {
-        const counts = {
-          时间轴事件: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM timeline_events'))[0]?.count || 0,
-          信件: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM letters'))[0]?.count || 0,
-          照片: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM photos'))[0]?.count || 0,
-          旅行: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM travels'))[0]?.count || 0,
-          票据: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM receipts'))[0]?.count || 0,
-          目标: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM goals'))[0]?.count || 0,
-          任务: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM tasks'))[0]?.count || 0,
-          纪念物: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM keepsakes'))[0]?.count || 0,
-          温度记录: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM temperature_records'))[0]?.count || 0,
-          保险箱文件: (await dbAll<{ count: number }>('SELECT COUNT(*) as count FROM safe_files'))[0]?.count || 0,
-        };
 
-        setPreviewData({
-          tables: counts,
-          photoCount: counts['照片'],
-          safeFileCount: counts['保险箱文件'],
-          totalSize: backup.file_size,
-          createdAt: backup.created_at,
-          backupVersion: '1.0.0',
-        });
-      } catch (fallbackErr) {
-        console.error('Fallback preview error:', fallbackErr);
-        setPreviewData({
-          tables: {},
-          photoCount: 0,
-          safeFileCount: 0,
-          totalSize: backup.file_size,
-          createdAt: backup.created_at,
-          backupVersion: '1.0.0',
-        });
+      const manifest = preview.manifest;
+      const tables: Record<string, number> = {};
+      if (manifest.tableStats) {
+        for (const [enName, count] of Object.entries(manifest.tableStats)) {
+          const zhName = TABLE_NAME_MAP[enName] || enName;
+          tables[zhName] = count;
+        }
       }
-    }
 
-    setShowPreview(true);
+      const photoCount: number | '未备份' = manifest.includePhotos
+        ? (manifest.photoCount || 0)
+        : '未备份';
+      const safeFileCount: number | '未备份' = manifest.includeSafeFiles
+        ? (manifest.safeFileCount || 0)
+        : '未备份';
+
+      setPreviewData({
+        tables,
+        photoCount,
+        safeFileCount,
+        totalSize: backup.file_size,
+        createdAt: backup.created_at,
+        missingFiles: manifest.missingFiles,
+        backupVersion: manifest.version || '1.0.0',
+        includePhotos: manifest.includePhotos,
+        includeSafeFiles: manifest.includeSafeFiles,
+      });
+
+      setShowPreview(true);
+    } catch (err: any) {
+      console.error('Preview error:', err);
+      setPreviewData(null);
+      setShowPreview(true);
+      await showMessage('error', '预览失败', err?.message || '无法读取备份内容');
+    }
   };
 
   const handleRestoreBackup = async (backup: BackupDB) => {
@@ -227,46 +213,41 @@ const BackupPage: React.FC = () => {
     if (!confirmed) return;
 
     try {
-      let dbDeleted = false;
-      let fileDeleted = true;
-      let fileError = '';
+      const deleteResult = await backupDelete(backup.file_path);
 
-      try {
-        dbDeleted = await dbDelete('backups', backup.id);
-      } catch (e: any) {
-        console.error('Delete backup db record error:', e);
-      }
+      const {
+        dbRecordDeleted,
+        fileDeleted,
+        fileStillExists,
+        errors,
+      } = deleteResult;
 
-      try {
-        fileDeleted = await backupDelete(backup.file_path);
-      } catch (e: any) {
-        fileDeleted = false;
-        fileError = e?.message || '未知错误';
-        console.warn('Delete backup file warning:', e);
-      }
-
-      if (dbDeleted && fileDeleted) {
-        await showMessage('info', '已删除', '备份记录和文件均已删除');
-      } else if (dbDeleted && !fileDeleted) {
-        await showMessage(
-          'warning',
-          '部分删除',
-          `备份记录已从数据库删除，但备份文件未删除成功${fileError ? `：${fileError}` : ''}。文件路径：${backup.file_path}`
-        );
-      } else if (!dbDeleted && fileDeleted) {
-        await showMessage(
-          'warning',
-          '部分删除',
-          '备份文件已删除，但数据库记录未删除成功'
-        );
+      if (dbRecordDeleted && fileDeleted && !fileStillExists) {
+        await showMessage('info', '已删除', '备份记录和文件均已完全删除');
       } else {
-        await showMessage('error', '删除失败', '备份记录和文件都未能删除');
+        const details: string[] = [];
+        details.push(`数据库记录${dbRecordDeleted ? '已全部删除' : '未完全删除（剩余记录需手动清理）'}`);
+        details.push(`备份文件${fileDeleted ? '已执行删除操作' : '删除操作失败'}`);
+        details.push(`磁盘检查结果：${fileStillExists ? '文件仍存在' : '文件已不存在'}`);
+
+        const errorStr = errors && errors.length > 0
+          ? `\n\n详细错误：\n${errors.map((e, i) => `${i + 1}. ${e}`).join('\n')}`
+          : '';
+
+        const messageType: 'warning' | 'error' =
+          (!dbRecordDeleted && !fileDeleted) ? 'error' : 'warning';
+
+        await showMessage(
+          messageType,
+          '删除完成但有残留',
+          `${details.join('，')}。\n剩余文件路径：${backup.file_path}${errorStr}`
+        );
       }
 
       await loadBackups();
     } catch (err: any) {
       console.error('Delete error:', err);
-      await showMessage('error', '删除失败', err?.message || '删除备份失败');
+      await showMessage('error', '删除失败', err?.message || '删除备份时发生异常');
     }
   };
 
@@ -419,7 +400,7 @@ const BackupPage: React.FC = () => {
         onClose={() => setShowPreview(false)}
         width={560}
       >
-        {previewData && (
+        {previewData ? (
           <div className="backup-preview">
             <div className="preview-section">
               <h4>📊 数据库各表记录数</h4>
@@ -449,6 +430,22 @@ const BackupPage: React.FC = () => {
                   <span className="preview-label">备份版本</span>
                   <span className="preview-value">v{previewData.backupVersion}</span>
                 </div>
+                <div className="preview-item">
+                  <span className="preview-label">照片数</span>
+                  <span className="preview-value">
+                    {typeof previewData.photoCount === 'number'
+                      ? `${previewData.photoCount} 张`
+                      : previewData.photoCount}
+                  </span>
+                </div>
+                <div className="preview-item">
+                  <span className="preview-label">保险箱文件数</span>
+                  <span className="preview-value">
+                    {typeof previewData.safeFileCount === 'number'
+                      ? `${previewData.safeFileCount} 个`
+                      : previewData.safeFileCount}
+                  </span>
+                </div>
               </div>
             </div>
             {previewData.missingFiles && previewData.missingFiles.length > 0 && (
@@ -472,6 +469,10 @@ const BackupPage: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        ) : (
+          <div style={{ padding: 24, textAlign: 'center', color: '#991b1b' }}>
+            无法读取备份内容，请检查备份文件是否损坏
           </div>
         )}
       </Modal>

@@ -71,7 +71,17 @@ export interface BackupResult {
   manifest?: BackupManifest;
   photoCount?: number;
   safeFileCount?: number;
+  backupId?: number;
   error?: string;
+}
+
+export interface DeleteBackupResult {
+  dbRecordDeleted: boolean;
+  dbRecordCount: number;
+  fileDeleted: boolean;
+  fileStillExists: boolean;
+  filePath: string;
+  errors: string[];
 }
 
 export interface BackupRecord {
@@ -762,8 +772,9 @@ class FileManager {
       if (options.includeSafeFiles) descriptionParts.push(`${safeFileCount}个安全文件`);
       if (missingFiles.length > 0) descriptionParts.push(`${missingFiles.length}个文件缺失`);
 
+      let backupId: number | undefined;
       try {
-        databaseManager.insert<Backup>('backups', {
+        backupId = databaseManager.insert<Backup>('backups', {
           backup_name: backupName,
           file_path: backupPath,
           file_size: fileSize,
@@ -771,7 +782,9 @@ class FileManager {
           description: descriptionParts.join('，') || '仅数据库',
           created_at: new Date().toISOString(),
         });
-      } catch {}
+      } catch (insertError) {
+        console.error('[Backup] 插入备份记录到数据库失败:', insertError);
+      }
 
       if (missingFiles.length > 0) {
         console.warn(`[Backup] 备份完成，但有 ${missingFiles.length} 个文件缺失`);
@@ -786,6 +799,7 @@ class FileManager {
         manifest,
         photoCount,
         safeFileCount,
+        backupId,
       };
     } catch (error) {
       if (tempBackupDir) {
@@ -952,7 +966,6 @@ class FileManager {
 
     const timestamp = Date.now();
     const previewDir = path.join(this.tempDir, `preview_${timestamp}_${process.pid}`);
-    let result: BackupPreview | null = null;
 
     try {
       this.ensureDir(previewDir);
@@ -964,7 +977,7 @@ class FileManager {
       }
       const manifest: BackupManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
 
-      result = { manifest };
+      const result: BackupPreview = { manifest };
 
       if (manifest.includePhotos) {
         const photoManifestPath = path.join(previewDir, 'photo_manifest.json');
@@ -980,11 +993,18 @@ class FileManager {
         }
       }
 
+      try {
+        this.removeDirectory(previewDir);
+      } catch (cleanupError) {
+        console.warn('[Preview] 清理预览临时目录失败:', cleanupError);
+      }
+
       return result;
-    } finally {
+    } catch (error) {
       try {
         this.removeDirectory(previewDir);
       } catch {}
+      throw error;
     }
   }
 
@@ -1006,23 +1026,65 @@ class FileManager {
     }
   }
 
-  deleteBackup(backupPath: string): boolean {
+  deleteBackup(backupPath: string): DeleteBackupResult {
+    const result: DeleteBackupResult = {
+      dbRecordDeleted: false,
+      dbRecordCount: 0,
+      fileDeleted: false,
+      fileStillExists: false,
+      filePath: backupPath,
+      errors: [],
+    };
+
     try {
+      let backups: Backup[] = [];
       try {
-        const backups = databaseManager.findAll<Backup>('backups', {
+        backups = databaseManager.findAll<Backup>('backups', {
           where: { file_path: backupPath } as any,
         });
-        for (const b of backups) {
-          if (b.id) {
-            databaseManager.delete('backups', b.id);
+      } catch (findError) {
+        result.errors.push(`查询备份记录失败: ${findError instanceof Error ? findError.message : String(findError)}`);
+      }
+
+      result.dbRecordCount = backups.length;
+
+      for (const b of backups) {
+        if (b.id) {
+          try {
+            const deleted = databaseManager.delete('backups', b.id);
+            if (deleted) {
+              result.dbRecordCount--;
+            }
+          } catch (deleteError) {
+            result.errors.push(`删除备份记录[id=${b.id}]失败: ${deleteError instanceof Error ? deleteError.message : String(deleteError)}`);
           }
         }
-      } catch {}
+      }
 
-      return this.deleteFile(backupPath);
-    } catch {
-      return false;
+      result.dbRecordDeleted = result.dbRecordCount === 0;
+    } catch (dbError) {
+      result.errors.push(`数据库操作异常: ${dbError instanceof Error ? dbError.message : String(dbError)}`);
     }
+
+    try {
+      if (fs.existsSync(backupPath)) {
+        result.fileDeleted = this.deleteFile(backupPath);
+        if (!result.fileDeleted) {
+          result.errors.push('删除备份文件操作返回失败');
+        }
+      }
+    } catch (fileError) {
+      result.fileDeleted = false;
+      result.errors.push(`删除备份文件异常: ${fileError instanceof Error ? fileError.message : String(fileError)}`);
+    }
+
+    try {
+      result.fileStillExists = fs.existsSync(backupPath);
+    } catch (checkError) {
+      result.errors.push(`检查文件是否存在失败: ${checkError instanceof Error ? checkError.message : String(checkError)}`);
+    }
+
+    return result;
   }
 
   removeDirectory(dirPath: string): boolean {
