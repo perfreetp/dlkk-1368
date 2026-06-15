@@ -116,6 +116,12 @@ export default function Gallery() {
           setTimeout(() => {
             element.classList.remove('record-highlight-pulse');
           }, 3000);
+          const photo = photos.find((p) => p.id === highlightRecord.id);
+          if (photo) {
+            setTimeout(() => {
+              handleViewPhoto(photo);
+            }, 300);
+          }
           clearHighlightRecord();
         }
       }, 200);

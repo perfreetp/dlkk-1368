@@ -32,10 +32,16 @@
   font-size: 48px;
 }
 
-.travel-delete-btn {
+.travel-card-actions {
   position: absolute;
   top: var(--spacing-sm);
   right: var(--spacing-sm);
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.travel-edit-btn,
+.travel-delete-btn {
   width: 32px;
   height: 32px;
   display: flex;
@@ -47,6 +53,13 @@
   cursor: pointer;
   font-size: var(--font-size-sm);
   transition: all var(--transition-fast);
+  border: none;
+  padding: 0;
+}
+
+.travel-edit-btn:hover {
+  background-color: var(--color-primary);
+  color: white;
 }
 
 .travel-delete-btn:hover {

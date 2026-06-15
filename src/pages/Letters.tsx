@@ -128,6 +128,12 @@ export default function Letters() {
           setTimeout(() => {
             element.classList.remove('record-highlight-pulse');
           }, 3000);
+          const letter = letters.find((l) => l.id === highlightRecord.id);
+          if (letter) {
+            setTimeout(() => {
+              handleView(letter);
+            }, 300);
+          }
           clearHighlightRecord();
         }
       }, 200);

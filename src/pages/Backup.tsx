@@ -227,13 +227,42 @@ const BackupPage: React.FC = () => {
     if (!confirmed) return;
 
     try {
-      await dbDelete('backups', backup.id);
+      let dbDeleted = false;
+      let fileDeleted = true;
+      let fileError = '';
+
       try {
-        await backupDelete(backup.file_path);
-      } catch (e) {
+        dbDeleted = await dbDelete('backups', backup.id);
+      } catch (e: any) {
+        console.error('Delete backup db record error:', e);
+      }
+
+      try {
+        fileDeleted = await backupDelete(backup.file_path);
+      } catch (e: any) {
+        fileDeleted = false;
+        fileError = e?.message || '未知错误';
         console.warn('Delete backup file warning:', e);
       }
-      await showMessage('info', '已删除', '备份记录已删除');
+
+      if (dbDeleted && fileDeleted) {
+        await showMessage('info', '已删除', '备份记录和文件均已删除');
+      } else if (dbDeleted && !fileDeleted) {
+        await showMessage(
+          'warning',
+          '部分删除',
+          `备份记录已从数据库删除，但备份文件未删除成功${fileError ? `：${fileError}` : ''}。文件路径：${backup.file_path}`
+        );
+      } else if (!dbDeleted && fileDeleted) {
+        await showMessage(
+          'warning',
+          '部分删除',
+          '备份文件已删除，但数据库记录未删除成功'
+        );
+      } else {
+        await showMessage('error', '删除失败', '备份记录和文件都未能删除');
+      }
+
       await loadBackups();
     } catch (err: any) {
       console.error('Delete error:', err);
@@ -322,7 +351,7 @@ const BackupPage: React.FC = () => {
       )}
 
       <Modal
-        visible={showCreateModal}
+        isOpen={showCreateModal}
         title="创建备份"
         onClose={() => !isCreating && setShowCreateModal(false)}
         footer={
@@ -385,7 +414,7 @@ const BackupPage: React.FC = () => {
       </Modal>
 
       <Modal
-        visible={showPreview}
+        isOpen={showPreview}
         title={`备份预览 - ${previewBackup?.backup_name || ''}`}
         onClose={() => setShowPreview(false)}
         width={560}

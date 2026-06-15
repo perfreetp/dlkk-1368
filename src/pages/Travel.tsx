@@ -141,14 +141,17 @@ export default function Travel() {
     imagePath: '',
   });
 
-  const loadTravels = async () => {
+  const loadTravels = async (): Promise<TravelExt[]> => {
     setLoading(true);
     try {
       const sql = 'SELECT * FROM travels ORDER BY start_date DESC, created_at DESC';
       const result = (await dbAll(sql)) as TravelDB[];
-      setTravels(result.map(parseTravelExt));
+      const travelList = result.map(parseTravelExt);
+      setTravels(travelList);
+      return travelList;
     } catch (error) {
       console.error('加载旅行记录失败:', error);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -178,6 +181,12 @@ export default function Travel() {
           setTimeout(() => {
             element.classList.remove('record-highlight-pulse');
           }, 3000);
+          const travel = travels.find((t) => t.id === highlightRecord.id);
+          if (travel) {
+            setTimeout(() => {
+              handleViewTravel(travel);
+            }, 300);
+          }
           clearHighlightRecord();
         }
       }, 200);
@@ -267,6 +276,8 @@ export default function Travel() {
       });
       return;
     }
+    const isEdit = travelForm.id > 0;
+    const editedId = travelForm.id;
     try {
       const serializedDesc = serializeTravelExt({
         description: travelForm.description,
@@ -274,7 +285,7 @@ export default function Travel() {
         route: travelForm.route,
       });
 
-      if (travelForm.id > 0) {
+      if (isEdit) {
         const sql =
           'UPDATE travels SET title=?, description=?, location=?, start_date=?, end_date=?, photo_ids=?, cost=?, updated_at=datetime("now","localtime") WHERE id=?';
         await dbRun(sql, [
@@ -312,8 +323,20 @@ export default function Travel() {
           message: '旅行记录已保存',
         });
       }
+
       setShowModal(false);
-      await loadTravels();
+      const updatedTravels = await loadTravels();
+
+      if (isEdit) {
+        const updatedTravel = updatedTravels.find((t) => t.id === editedId);
+        if (updatedTravel) {
+          setViewingTravel(updatedTravel);
+          setActiveTravelId(updatedTravel.id);
+          await loadReceipts(updatedTravel.id);
+        }
+      }
+
+      setTravelForm((prev) => ({ ...prev, id: 0 }));
     } catch (error) {
       console.error('保存旅行失败:', error);
       await showMessage({
@@ -497,13 +520,25 @@ export default function Travel() {
                 <div className="travel-cover">
                   <span className="travel-emoji">🏖️</span>
                 </div>
-                <button
-                  className="travel-delete-btn"
-                  onClick={(e) => handleDeleteTravel(travel, e)}
-                  title="删除"
-                >
-                  🗑️
-                </button>
+                <div className="travel-card-actions">
+                  <button
+                    className="travel-edit-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditTravel(travel);
+                    }}
+                    title="编辑"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    className="travel-delete-btn"
+                    onClick={(e) => handleDeleteTravel(travel, e)}
+                    title="删除"
+                  >
+                    🗑️
+                  </button>
+                </div>
               </div>
               <div className="travel-card-body">
                 <h3 className="fw-600 text-lg mb-sm">{travel.title}</h3>

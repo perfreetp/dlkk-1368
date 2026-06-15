@@ -52,10 +52,13 @@ const SearchBar: React.FC = () => {
       const likeQuery = `%${query}%`;
 
       const events = await dbAll<any>(
-        'SELECT id, title, description, event_date as date FROM timeline_events WHERE title LIKE ? OR description LIKE ? ORDER BY event_date DESC LIMIT 10',
-        [likeQuery, likeQuery]
+        'SELECT id, title, description, category, event_date as date FROM timeline_events WHERE title LIKE ? OR description LIKE ? OR category LIKE ? ORDER BY event_date DESC LIMIT 10',
+        [likeQuery, likeQuery, likeQuery]
       );
-      events.forEach((e) => results.push({ type: 'timeline', id: e.id, title: e.title, snippet: e.description, date: e.date }));
+      events.forEach((e) => {
+        const snippet = e.description || e.category || '';
+        results.push({ type: 'timeline', id: e.id, title: e.title, snippet, date: e.date });
+      });
 
       const letters = await dbAll<any>(
         'SELECT id, title, content, created_at as date FROM letters WHERE title LIKE ? OR content LIKE ? ORDER BY created_at DESC LIMIT 10',
@@ -67,7 +70,25 @@ const SearchBar: React.FC = () => {
         'SELECT id, title, description, COALESCE(taken_at, created_at) as date FROM photos WHERE title LIKE ? OR description LIKE ? ORDER BY COALESCE(taken_at, created_at) DESC LIMIT 10',
         [likeQuery, likeQuery]
       );
-      photos.forEach((p) => results.push({ type: 'gallery', id: p.id, title: p.title || '照片', snippet: p.description, date: p.date }));
+      photos.forEach((p) => {
+        let description = p.description || '';
+        let tags: string[] = [];
+        try {
+          if (description.startsWith('{')) {
+            const parsed = JSON.parse(description);
+            tags = parsed.tags || [];
+            description = parsed.description || '';
+          }
+        } catch (e) {
+          // ignore
+        }
+        let snippet = description;
+        if (tags.length > 0) {
+          const tagStr = tags.map((t) => `#${t}`).join(' ');
+          snippet = snippet ? `${snippet} | ${tagStr}` : tagStr;
+        }
+        results.push({ type: 'gallery', id: p.id, title: p.title || '照片', snippet, date: p.date });
+      });
 
       const travels = await dbAll<any>(
         'SELECT id, title, description, location, start_date as date FROM travels WHERE title LIKE ? OR description LIKE ? OR location LIKE ? ORDER BY start_date DESC LIMIT 10',
