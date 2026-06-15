@@ -1,7 +1,14 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron';
 import { databaseManager, TableName, QueryOptions } from './database';
 import { cryptoManager } from './crypto';
-import { fileManager, ImportPhotoResult, BackupOptions, BackupResult } from './fileManager';
+import {
+  fileManager,
+  ImportPhotoResult,
+  BackupOptions,
+  BackupResult,
+  BackupPreview,
+  BackupRecord,
+} from './fileManager';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -416,6 +423,15 @@ export function registerIpcHandlers(): void {
     }
   );
 
+  ipcMain.handle('backup:preview', (_event, backupPath: string) => {
+    try {
+      const result = fileManager.previewBackup(backupPath);
+      return success(result);
+    } catch (error) {
+      return handleError(error);
+    }
+  });
+
   ipcMain.handle('backup:list', () => {
     try {
       const result = fileManager.listBackups();
@@ -524,4 +540,28 @@ export function registerIpcHandlers(): void {
       return handleError(error);
     }
   });
+
+  ipcMain.handle(
+    'dialog:showMessage',
+    async (
+      _event,
+      type: 'info' | 'warning' | 'error' | 'question',
+      title: string,
+      message: string
+    ) => {
+      try {
+        if (!mainWindow) {
+          return handleError(new Error('窗口未初始化'));
+        }
+        const result = await dialog.showMessageBox(mainWindow, {
+          type,
+          title,
+          message,
+        });
+        return success(result);
+      } catch (error) {
+        return handleError(error);
+      }
+    }
+  );
 }

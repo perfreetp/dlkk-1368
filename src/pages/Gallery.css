@@ -214,3 +214,16 @@
   max-height: 60vh;
   object-fit: contain;
 }
+
+.record-highlight {
+  animation: highlight-flash 3s ease-in-out 2;
+  position: relative;
+  z-index: 5;
+}
+@keyframes highlight-flash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 180, 208, 0); }
+  30% { box-shadow: 0 0 0 6px rgba(232, 180, 208, 0.6), 0 0 24px 8px rgba(201, 167, 235, 0.4); border-color: #E8B4D0; transform: scale(1.02); }
+}
+.record-highlight-pulse {
+  animation: highlight-flash 3s ease-in-out 2;
+}

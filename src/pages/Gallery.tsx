@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import dayjs from 'dayjs';
 import { dbAll, dbRun, showMessage, selectFile, deleteFile } from '@/utils/api';
 import { formatDate, formatFileSize, debounce } from '@/utils';
+import { useAppStore } from '@/store';
 import './Gallery.css';
 
 interface PhotoDB {
@@ -81,6 +82,7 @@ export default function Gallery() {
   const [editForm, setEditForm] = useState({ title: '', description: '', tags: '' });
   const [scanningDuplicates, setScanningDuplicates] = useState(false);
   const [selectedForDelete, setSelectedForDelete] = useState<Set<number>>(new Set());
+  const { highlightRecord, clearHighlightRecord } = useAppStore();
 
   const loadPhotos = async () => {
     setLoading(true);
@@ -103,6 +105,23 @@ export default function Gallery() {
   useEffect(() => {
     loadPhotos();
   }, []);
+
+  useEffect(() => {
+    if (highlightRecord.type === 'gallery' && highlightRecord.id !== null) {
+      const timer = setTimeout(() => {
+        const element = document.getElementById('photo-item-' + highlightRecord.id);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('record-highlight-pulse');
+          setTimeout(() => {
+            element.classList.remove('record-highlight-pulse');
+          }, 3000);
+          clearHighlightRecord();
+        }
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightRecord.timestamp]);
 
   const duplicateGroups = useMemo((): DuplicateGroup[] => {
     const hashMap = new Map<string, PhotoExt[]>();
@@ -482,7 +501,13 @@ export default function Gallery() {
             {filteredPhotos.map((photo) => (
               <div
                 key={photo.id}
-                className="photo-card"
+                id={"photo-item-" + photo.id}
+                className={`photo-card ${
+                  String(highlightRecord.id) === String(photo.id) &&
+                  highlightRecord.type === 'gallery'
+                    ? 'record-highlight'
+                    : ''
+                }`}
                 onClick={() => handleViewPhoto(photo)}
               >
                 <div className="photo-thumbnail">

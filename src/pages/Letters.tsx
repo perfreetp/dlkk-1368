@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import dayjs from 'dayjs';
 import { dbAll, dbRun, showMessage } from '@/utils/api';
 import { formatDate, formatDateTime } from '@/utils';
+import { useAppStore } from '@/store';
 import './Letters.css';
 
 interface LetterDB {
@@ -89,6 +90,7 @@ export default function Letters() {
   const [form, setForm] = useState<LetterForm>(defaultForm);
   const [snippetInput, setSnippetInput] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'locked' | 'unlocked' | 'favorite'>('all');
+  const { highlightRecord, clearHighlightRecord } = useAppStore();
 
   const loadLetters = async () => {
     setLoading(true);
@@ -111,6 +113,23 @@ export default function Letters() {
   useEffect(() => {
     loadLetters();
   }, []);
+
+  useEffect(() => {
+    if (highlightRecord.type === 'letters' && highlightRecord.id !== null) {
+      const timer = setTimeout(() => {
+        const element = document.getElementById('letter-card-' + highlightRecord.id);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('record-highlight-pulse');
+          setTimeout(() => {
+            element.classList.remove('record-highlight-pulse');
+          }, 3000);
+          clearHighlightRecord();
+        }
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightRecord.timestamp]);
 
   const handleOpenWriteModal = () => {
     setForm(defaultForm);
@@ -335,8 +354,14 @@ export default function Letters() {
           {filteredLetters.map((letter) => (
             <div
               key={letter.id}
+              id={"letter-card-" + letter.id}
               className={`letter-card card ${letter.isLocked ? 'letter-locked' : ''} ${
                 !letter.isRead && !letter.isLocked ? 'letter-unread' : ''
+              } ${
+                String(highlightRecord.id) === String(letter.id) &&
+                highlightRecord.type === 'letters'
+                  ? 'record-highlight'
+                  : ''
               }`}
               onClick={() => handleView(letter)}
             >

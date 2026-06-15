@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import dayjs from 'dayjs';
 import { dbAll, dbRun, showMessage } from '@/utils/api';
 import { formatDate, generateId } from '@/utils';
+import { useAppStore } from '@/store';
 import './Timeline.css';
 
 interface TimelineEventDB {
@@ -54,6 +55,7 @@ export default function Timeline() {
   const [form, setForm] = useState<TimelineEventForm>(defaultForm);
   const [tagInput, setTagInput] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const { highlightRecord, clearHighlightRecord } = useAppStore();
 
   const loadEvents = async () => {
     setLoading(true);
@@ -76,6 +78,23 @@ export default function Timeline() {
   useEffect(() => {
     loadEvents();
   }, []);
+
+  useEffect(() => {
+    if (highlightRecord.type === 'timeline' && highlightRecord.id !== null) {
+      const timer = setTimeout(() => {
+        const element = document.getElementById('timeline-event-' + highlightRecord.id);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('record-highlight-pulse');
+          setTimeout(() => {
+            element.classList.remove('record-highlight-pulse');
+          }, 3000);
+          clearHighlightRecord();
+        }
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightRecord.timestamp]);
 
   const handleOpenModal = (event?: TimelineEventDB) => {
     if (event) {
@@ -266,12 +285,23 @@ export default function Timeline() {
               </div>
               <div className="timeline-items">
                 {monthEvents.map((event) => (
-                  <div key={event.id} className="timeline-item">
+                  <div
+                    key={event.id}
+                    id={"timeline-event-" + event.id}
+                    className="timeline-item"
+                  >
                     <div
                       className="timeline-dot"
                       style={{ backgroundColor: categoryColors[event.category] || '#E8B4D0' }}
                     />
-                    <div className="timeline-card card">
+                    <div
+                      className={`timeline-card card ${
+                        String(highlightRecord.id) === String(event.id) &&
+                        highlightRecord.type === 'timeline'
+                          ? 'record-highlight'
+                          : ''
+                      }`}
+                    >
                       <div className="flex justify-between items-start mb-sm">
                         <div>
                           <h3 className="fw-600 text-lg">{event.title}</h3>

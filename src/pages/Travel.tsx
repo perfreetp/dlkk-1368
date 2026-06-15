@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import dayjs from 'dayjs';
 import { dbAll, dbRun, showMessage, selectFile } from '@/utils/api';
 import { formatDate, formatDateTime, formatFileSize } from '@/utils';
+import { useAppStore } from '@/store';
 import './Travel.css';
 
 interface TravelDB {
@@ -113,6 +114,7 @@ export default function Travel() {
   const [viewingTravel, setViewingTravel] = useState<TravelExt | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [activeTravelId, setActiveTravelId] = useState<number | null>(null);
+  const { highlightRecord, clearHighlightRecord } = useAppStore();
 
   const [travelForm, setTravelForm] = useState({
     id: 0,
@@ -165,6 +167,23 @@ export default function Travel() {
   useEffect(() => {
     loadTravels();
   }, []);
+
+  useEffect(() => {
+    if (highlightRecord.type === 'travels' && highlightRecord.id !== null) {
+      const timer = setTimeout(() => {
+        const element = document.getElementById('travel-card-' + highlightRecord.id);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('record-highlight-pulse');
+          setTimeout(() => {
+            element.classList.remove('record-highlight-pulse');
+          }, 3000);
+          clearHighlightRecord();
+        }
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightRecord.timestamp]);
 
   const getTravelReceipts = (travelId: number) => {
     return receipts.filter((r) => r.photo_id === travelId);
@@ -424,7 +443,13 @@ export default function Travel() {
           {travels.map((travel) => (
             <div
               key={travel.id}
-              className="travel-card card"
+              id={"travel-card-" + travel.id}
+              className={`travel-card card ${
+                String(highlightRecord.id) === String(travel.id) &&
+                highlightRecord.type === 'travels'
+                  ? 'record-highlight'
+                  : ''
+              }`}
               onClick={() => handleViewTravel(travel)}
             >
               <div className="travel-card-header">

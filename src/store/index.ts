@@ -7,6 +7,7 @@ interface AppState {
   isAuthenticated: boolean;
   sidebarCollapsed: boolean;
   search: SearchState;
+  highlightRecord: { type: ViewType | null; id: string | number | null; timestamp: number };
   settings: Settings;
   setCurrentView: (view: ViewType) => void;
   setVisitorMode: (isVisitor: boolean) => void;
@@ -17,6 +18,8 @@ interface AppState {
   setSearchActive: (active: boolean) => void;
   setSearchResults: (results: SearchState['results']) => void;
   clearSearch: () => void;
+  setHighlightRecord: (type: ViewType, id: string | number) => void;
+  clearHighlightRecord: () => void;
   updateSettings: (settings: Partial<Settings>) => void;
 }
 
@@ -47,6 +50,11 @@ export const useAppStore = create<AppState>((set) => ({
     query: '',
     isActive: false,
     results: [],
+  },
+  highlightRecord: {
+    type: null,
+    id: null,
+    timestamp: 0,
   },
   settings: defaultSettings,
 
@@ -82,6 +90,16 @@ export const useAppStore = create<AppState>((set) => ({
         isActive: false,
         results: [],
       },
+    }),
+
+  setHighlightRecord: (type, id) =>
+    set({
+      highlightRecord: { type, id, timestamp: Date.now() },
+    }),
+
+  clearHighlightRecord: () =>
+    set({
+      highlightRecord: { type: null, id: null, timestamp: 0 },
     }),
 
   updateSettings: (newSettings) =>

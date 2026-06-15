@@ -6,17 +6,25 @@ import './SearchBar.css';
 
 const typeLabels: Record<ViewType, string> = {
   timeline: '时间轴',
-  letters: '信件',
-  gallery: '照片',
-  travels: '旅行',
-  checklist: '清单',
+  letters: '信件箱',
+  gallery: '影像库',
+  travels: '旅行册',
+  checklist: '清单板',
   stats: '统计',
   safe: '保险箱',
-  backup: '备份',
+  backup: '备份管理',
 };
 
 const SearchBar: React.FC = () => {
-  const { search, setSearchQuery, setSearchActive, setSearchResults, clearSearch, setCurrentView } = useAppStore();
+  const {
+    search,
+    setSearchQuery,
+    setSearchActive,
+    setSearchResults,
+    clearSearch,
+    setCurrentView,
+    setHighlightRecord,
+  } = useAppStore();
   const [inputValue, setInputValue] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -103,9 +111,11 @@ const SearchBar: React.FC = () => {
 
   const handleResultClick = (result: SearchResult) => {
     setCurrentView(result.type);
+    if (result.id != null) {
+      setHighlightRecord(result.type, result.id);
+    }
     clearSearch();
     setInputValue('');
-    showMessage('info', `已跳转到 ${typeLabels[result.type]}`);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
